@@ -20,16 +20,23 @@ class PathPlan(object):
         self.traj_pub = rospy.Publisher("/trajectory/current", PoseArray, queue_size=10)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb)
 
+        self.start = None
+        self.end = None
+        self.map = None
+
 
     def map_cb(self, msg):
+        self.map = 0 # replace with some representation of the map based on the occupancy grid message
         pass ## REMOVE AND FILL IN ##
 
 
     def odom_cb(self, msg):
+        self.start = 0 # replace with starting pose from odom message
         pass ## REMOVE AND FILL IN ##
 
 
     def goal_cb(self, msg):
+        self.end = 0 # replace with ending pose from pose message
         pass ## REMOVE AND FILL IN ##
 
     def plan_path(self, start_point, end_point, map):
