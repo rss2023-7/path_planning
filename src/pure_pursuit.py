@@ -16,9 +16,14 @@ class PurePursuit(object):
     """
     def __init__(self):
         self.odom_topic       = rospy.get_param("~odom_topic")
-        self.lookahead        = # FILL IN #
-        self.speed            = # FILL IN #
-        self.wheelbase_length = # FILL IN #
+        
+        # these numbers can be played with
+        self.lookahead        = 1.5
+        self.speed            = 1.0
+        
+        # didn't we measure this for the safety controller?
+        self.wheelbase_length = 0.8
+        
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, queue_size=1)
