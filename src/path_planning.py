@@ -23,21 +23,42 @@ class PathPlan(object):
         self.start = None
         self.end = None
         self.map = None
+        self.resolution = None
 
 
     def map_cb(self, msg):
-        self.map = 0 # replace with some representation of the map based on the occupancy grid message
-        pass ## REMOVE AND FILL IN ##
+        new_map = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+        new_resolution = msg.info.resolution
+        if self.map != new_map or self.resolution != new_resolution:
+            self.map = new_map
+            self.resolution = new_resolution
+            self.try_plan_path()
 
 
     def odom_cb(self, msg):
-        self.start = 0 # replace with starting pose from odom message
-        pass ## REMOVE AND FILL IN ##
+        new_start = self.get_pose(msg.pose.pose)
+        if self.start != new_start:
+            self.start = new_start
+            self.try_plan_path()
 
 
     def goal_cb(self, msg):
-        self.end = 0 # replace with ending pose from pose message
-        pass ## REMOVE AND FILL IN ##
+        new_end = self.get_pose(msg.pose)
+        if self.end != new_end:
+            self.end = new_end
+            self.try_plan_path()
+
+
+    def get_pose(self, pose):
+        x = pose.position.x
+        y = pose.position.y
+        theta, _, _ = trans.rotation_from_matrix(trans.quaternion_matrix([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]))
+        return (x, y, theta)
+
+
+    def try_plan_path():
+        if self.start != None and self.end != None and self.map != None:
+            self.plan_path(self.start, self.end, self.map)
 
     def plan_path(self, start_point, end_point, map):
         ## CODE FOR PATH PLANNING ##
