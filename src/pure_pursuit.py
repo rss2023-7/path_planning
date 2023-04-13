@@ -28,6 +28,7 @@ class PurePursuit(object):
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
+        self.car_pose = None
 
     def trajectory_callback(self, msg):
         ''' Clears the currently followed trajectory, and loads the new one from the message
@@ -40,7 +41,28 @@ class PurePursuit(object):
     def odom_callback(self, msg):
         ''' Updates the heading of the car based on the provided odometry data
         '''
-        pass
+        self.car_pose = msg.pose.pose
+    
+    def drive_to_goal(self, goal_pose):
+        ''' Navigates the car toward the goal point
+        '''
+        
+        if self.car_pose is None:
+            return
+        
+        # define car position
+        car_x = self.car_pose.point.x
+        car_y = self.car_pose.point.y
+        
+        # define goal position
+        goal_x = goal_pose.point.x
+        goal_y = goal_pose.point.y
+        
+        # publish the drive command
+        drive_cmd = AckermannDriveStamped()
+        drive_cmd.drive.steering_angle = 0.0
+        drive_cmd.drive.speed = self.speed
+        self.drive_pub(drivee_cmd)
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
