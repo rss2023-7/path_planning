@@ -21,6 +21,7 @@ class PurePursuit(object):
         self.wheelbase_length = # FILL IN #
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
+        self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
 
     def trajectory_callback(self, msg):
@@ -30,7 +31,11 @@ class PurePursuit(object):
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz(duration=0.0)
-
+        
+    def odom_callback(self, msg):
+        ''' Updates the heading of the car based on the provided odometry data
+        '''
+        pass
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
