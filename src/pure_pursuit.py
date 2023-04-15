@@ -100,22 +100,35 @@ class PurePursuit(object):
 
     def drive_to_goal(self, goal_pose):
         """ Navigates the car toward the goal point
+        
+            Args:
+                geometry_msgs/Pose.msg: The pose of the goal point
         """
         
         if self.car_pose is None:
             return
         
         # define car position
-        car_x = self.car_pose.point.x
-        car_y = self.car_pose.point.y
+        car_x = self.car_pose.position.x
+        car_y = self.car_pose.position.y
         
         # define goal position
-        goal_x = goal_pose.point.x
-        goal_y = goal_pose.point.y
+        goal_x = goal_pose.position.x
+        goal_y = goal_pose.position.y
+        
+        # normalize coords so as to place car at artificial origin
+        car_x -= car_x
+        goal_x -= car_x
+        
+        car_y -= car_y
+        goal_y -= car_y
+        
+        # determine drive angle (taken from parking controller)
+        drive_angle = np.arctan2(goal_y, goal_x)
         
         # publish the drive command
         drive_cmd = AckermannDriveStamped()
-        drive_cmd.drive.steering_angle = 0.0
+        drive_cmd.drive.steering_angle = drive_angle
         drive_cmd.drive.speed = self.speed
         self.drive_pub(drivee_cmd)
 
