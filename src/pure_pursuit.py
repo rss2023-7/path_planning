@@ -130,7 +130,7 @@ class PurePursuit(object):
         drive_cmd = AckermannDriveStamped()
         drive_cmd.drive.steering_angle = drive_angle
         drive_cmd.drive.speed = self.speed
-        self.drive_pub(drivee_cmd)
+        self.drive_pub(drive_cmd)
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
