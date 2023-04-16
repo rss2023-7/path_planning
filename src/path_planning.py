@@ -136,6 +136,7 @@ class PathPlan(object):
 
     def plan_path(self, start_point, end_point, map):
         ## CODE FOR PATH PLANNING ##
+        # print("planning path")
         self.trajectory.clear()
 
         # print(start_point)
@@ -167,7 +168,7 @@ class PathPlan(object):
                 # sampled pose is in a free node
                 nearest = min(costs.keys(), key=lambda node: self.dist(node.cur, sample))
                 dist = self.dist(nearest.cur, sample)
-                max_dist = 5.
+                max_dist = 10.
                 # if (i%100) == 0:
                 #     print("before:",sample)
                 #     print(i)
