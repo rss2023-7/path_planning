@@ -44,7 +44,7 @@ class PathPlan(object):
         new_map = np.array(msg.data).reshape(msg.info.height, msg.info.width).T
         new_resolution = msg.info.resolution
         new_origin = self.get_origin(msg.info.origin)
-        if self.map != new_map or self.resolution != new_resolution or self.origin != new_origin:
+        if self.map is None or self.map != new_map or self.res is None or self.resolution != new_resolution or self.origin is None or self.origin != new_origin:
             # print(new_map.shape)
             # print(msg.info.width, msg.info.height)
             # print(new_origin)
