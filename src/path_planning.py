@@ -8,6 +8,7 @@ import rospkg
 import time, os
 from utils import LineTrajectory
 import tf.transformations as trans
+from scipy import ndimage
 
 
 class Node:
@@ -41,7 +42,7 @@ class PathPlan(object):
     def map_cb(self, msg):
         # print(type(msg.data))
         # print(len(msg.data))
-        new_map = np.array(msg.data).reshape(msg.info.height, msg.info.width).T
+        new_map = ndimage.binary_dilation(np.array(msg.data).reshape(msg.info.height, msg.info.width).T, iterations=3).astype(float) * 100
         new_resolution = msg.info.resolution
         new_origin = self.get_origin(msg.info.origin)
         if self.map is None or self.map != new_map or self.res is None or self.resolution != new_resolution or self.origin is None or self.origin != new_origin:
