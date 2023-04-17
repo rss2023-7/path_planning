@@ -108,28 +108,41 @@ class PurePursuit(object):
         if self.car_pose is None:
             return
         
-        # define car position
-        car_x = self.car_pose.position.x
-        car_y = self.car_pose.position.y
+        drive_cmd = AckermannDriveStamped()
         
-        # define goal position
-        goal_x = goal_point[0]
-        goal_y = goal_point[1]
-        
-        # normalize coords so as to place car at artificial origin
-        car_x -= car_x
-        goal_x -= car_x
-        
-        car_y -= car_y
-        goal_y -= car_y
-        
-        # determine drive angle (taken from parking controller)
-        drive_angle = np.arctan2(goal_y, goal_x)
+        # stop the car if
+        # a) current goal point is the final point in the trajectory
+        # and
+        # b) car is within some acceptable distance of the current goal point
+        if  self.trajectory.points[-1] == goal_point:
+            drive_cmd.drive.steering_angle = 0
+            drive_cmd.drive.speed = 0
+
+        # otherwise, navigate to the current goal point
+        else:
+
+            # define car position
+            car_x = self.car_pose.position.x
+            car_y = self.car_pose.position.y
+            
+            # define goal position
+            goal_x = goal_point[0]
+            goal_y = goal_point[1]
+            
+            # normalize coords so as to place car at artificial origin
+            car_x -= car_x
+            goal_x -= car_x
+            
+            car_y -= car_y
+            goal_y -= car_y
+            
+            # determine drive angle (taken from parking controller)
+            drive_angle = np.arctan2(goal_y, goal_x)
+
+            drive_cmd.drive.steering_angle = drive_angle
+            drive_cmd.drive.speed = self.speed
         
         # publish the drive command
-        drive_cmd = AckermannDriveStamped()
-        drive_cmd.drive.steering_angle = drive_angle
-        drive_cmd.drive.speed = self.speed
         self.drive_pub(drive_cmd)
 
 if __name__=="__main__":
