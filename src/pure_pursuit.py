@@ -98,11 +98,11 @@ class PurePursuit(object):
             return pt1
         return pt2
 
-    def drive_to_goal(self, goal_pose):
+    def drive_to_goal(self, goal_point):
         """ Navigates the car toward the goal point
         
             Args:
-                geometry_msgs/Pose.msg: The pose of the goal point
+                A numpy array containing two numbers, x and y coords of the goal point
         """
         
         if self.car_pose is None:
@@ -113,8 +113,8 @@ class PurePursuit(object):
         car_y = self.car_pose.position.y
         
         # define goal position
-        goal_x = goal_pose.position.x
-        goal_y = goal_pose.position.y
+        goal_x = goal_point[0]
+        goal_y = goal_point[1]
         
         # normalize coords so as to place car at artificial origin
         car_x -= car_x
