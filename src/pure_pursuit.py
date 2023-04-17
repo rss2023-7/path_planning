@@ -114,7 +114,7 @@ class PurePursuit(object):
         # a) current goal point is the final point in the trajectory
         # and
         # b) car is within some acceptable distance of the current goal point
-        if  self.trajectory.points[-1] == goal_point:
+        if  self.trajectory.points[-1][0] == goal_point[0] and self.trajectory.points[-1][1] == goal_point[1]:
             drive_cmd.drive.steering_angle = 0
             drive_cmd.drive.speed = 0
 
