@@ -20,12 +20,10 @@ class PurePursuit(object):
     """
     def __init__(self):
         
-        rospy.loginfo("init")
-
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.5
+        self.lookahead        = 10
         self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
@@ -50,14 +48,13 @@ class PurePursuit(object):
     def odom_callback(self, msg):
         """ Updates the heading of the car based on the provided odometry data
         """
-        rospy.loginfo("odom")
-
         if len(self.trajectory.points) > 1:
 
 
             self.car_pose = msg.pose.pose
 
             self.update_traj(self.car_pose)
+            print("we are between points ", self.cur_traj)
 
             goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
 
@@ -67,7 +64,6 @@ class PurePursuit(object):
         '''Updates self.cur_traj with best trajectory segment
         '''
         path = self.trajectory.points[self.cur_traj[0]:]
-        rospy.loginfo("path length = "+str(len(path)))
         def dist_to_seg2(pt1, pt2, car):
             # p1x = pt1.pose.position.x
             # p1y = pt1.pose.position.y
@@ -84,7 +80,7 @@ class PurePursuit(object):
             cy = car.position.y
 
             #https://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment/1501725#1501725
-            dist2 = lambda x1, x2, y1, y2: (x2 - x1)**2 - (y2 - y1)**2
+            dist2 = lambda x1, x2, y1, y2: ((x2 - x1)**2 + (y2 - y1)**2)
             l2 = dist2(p1x, p2x, p1y, p2y)
             if l2 == 0:
                 return dist2(p1x, cx, p1y, cy)
@@ -103,23 +99,24 @@ class PurePursuit(object):
         """ calculates goal point given two trajectory points
         """
         Q = np.array([self.car_pose.position.x, self.car_pose.position.y])
-        # Q = np.array([5.5, 4.5])
+        #Q = np.array([5.5, 4.5])
         r = self.lookahead
         P1 = np.array([pt1[0], pt1[1]])
         V = np.array([pt2[0], pt2[1]]) - P1
-        # print('Q: ', Q)
-        # print('r: ', r)
-        # print('P1: ', P1)
-        # print('V: ', V)
+        print('Q: ', Q)
+        print('r: ', r)
+        print('P1: ', P1)
+        print('V: ', V)
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
         c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
-        # print('a: ', a)
-        # print('b: ', b)
-        # print('c: ', c)
+        print('a: ', a)
+        print('b: ', b)
+        print('c: ', c)
 
         disc = b ** 2 - 4 * a * c
+        print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
             rospy.loginfo('No Path Found')
