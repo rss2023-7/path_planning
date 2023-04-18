@@ -48,6 +48,12 @@ class PurePursuit(object):
         """ Updates the heading of the car based on the provided odometry data
         """
         self.car_pose = msg.pose.pose
+
+        self.update_traj(self.car_pose)
+
+        goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+
+        self.drive_to_goal(goal_point)
     
     def update_traj(self, car_pose):
         '''Updates self.cur_traj with best trajectory segment
