@@ -28,6 +28,8 @@ class PurePursuit(object):
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
         
+        self.cur_traj = (0, 1) #indexes of points for current trajectory segment
+
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, queue_size=1)
@@ -46,6 +48,31 @@ class PurePursuit(object):
         """ Updates the heading of the car based on the provided odometry data
         """
         self.car_pose = msg.pose.pose
+    
+    def update_traj(self, car_pose):
+        '''Updates self.cur_traj with best trajectory segment
+        '''
+        path = self.trajectory[self.cur_traj[0]:]
+        def dist_to_seg2(pt1, pt2, car):
+            p1x = pt1.pose.position.x
+            p1y = pt1.pose.position.y
+            p2x = pt2.pose.position.x
+            p2y = pt2.pose.position.y
+            cx = car.pose.position.x
+            cy = car.pose.position.y
+
+            #https://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment/1501725#1501725
+            dist2 = lambda x1, x2, y1, y2: (x2 - x1)**2 - (y2 - y1)**2
+            l2 = dist2(p1x, p2x, p1y, p2y)
+            if l2 == 0:
+                return dist2(p1x, cx, p1y, cy)
+            t = ((cx - p1x) * (p2x - p1x) + (cy - p1y) * (p2y - p1y))/l2
+            t = max(0, min(1, t))
+            return dist2(cx, p1x + t * (p2x - p1x), cy, p1y + t * (p2y - p1y))
+        
+        dists = np.array([dist_to_seg2(path[i], path[i+1], car_pose) for i in range(len(path)-1)])
+        self.cur_traj[0] = np.argmin(dists)
+        self.cur_traj[1] = self.cur_traj[0] + 1
 
     def find_goal(self, pt1, pt2):
         """ calculates goal point given two trajectory points
