@@ -19,6 +19,9 @@ class PurePursuit(object):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
     """
     def __init__(self):
+        
+        rospy.loginfo("init")
+
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
@@ -32,7 +35,7 @@ class PurePursuit(object):
 
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
-        self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, queue_size=1)
+        self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_callback, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
         self.car_pose = None
 
@@ -47,25 +50,38 @@ class PurePursuit(object):
     def odom_callback(self, msg):
         """ Updates the heading of the car based on the provided odometry data
         """
-        self.car_pose = msg.pose.pose
+        rospy.loginfo("odom")
 
-        self.update_traj(self.car_pose)
+        if len(self.trajectory.points) > 1:
 
-        goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
 
-        self.drive_to_goal(goal_point)
+            self.car_pose = msg.pose.pose
+
+            self.update_traj(self.car_pose)
+
+            goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+
+            self.drive_to_goal(goal_point)
     
     def update_traj(self, car_pose):
         '''Updates self.cur_traj with best trajectory segment
         '''
-        path = self.trajectory[self.cur_traj[0]:]
+        path = self.trajectory.points[self.cur_traj[0]:]
+        rospy.loginfo("path length = "+str(len(path)))
         def dist_to_seg2(pt1, pt2, car):
-            p1x = pt1.pose.position.x
-            p1y = pt1.pose.position.y
-            p2x = pt2.pose.position.x
-            p2y = pt2.pose.position.y
-            cx = car.pose.position.x
-            cy = car.pose.position.y
+            # p1x = pt1.pose.position.x
+            # p1y = pt1.pose.position.y
+            # p2x = pt2.pose.position.x
+            # p2y = pt2.pose.position.y
+            # cx = car.pose.position.x
+            # cy = car.pose.position.y
+
+            p1x = pt1[0]
+            p1y = pt1[1]
+            p2x = pt2[0]
+            p2y = pt2[1]
+            cx = car.position.x
+            cy = car.position.y
 
             #https://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment/1501725#1501725
             dist2 = lambda x1, x2, y1, y2: (x2 - x1)**2 - (y2 - y1)**2
@@ -76,18 +92,21 @@ class PurePursuit(object):
             t = max(0, min(1, t))
             return dist2(cx, p1x + t * (p2x - p1x), cy, p1y + t * (p2y - p1y))
         
-        dists = np.array([dist_to_seg2(path[i], path[i+1], car_pose) for i in range(len(path)-1)])
-        self.cur_traj[0] = np.argmin(dists)
-        self.cur_traj[1] = self.cur_traj[0] + 1
+        if len(path) > 1:
+            dists = np.array([dist_to_seg2(path[i], path[i+1], car_pose) for i in range(len(path)-1)])
+            val = np.argmin(dists)
+            self.cur_traj = (val, val+1)
+            # self.cur_traj[0] = np.argmin(dists)
+            # self.cur_traj[1] = self.cur_traj[0] + 1
 
     def find_goal(self, pt1, pt2):
         """ calculates goal point given two trajectory points
         """
-        Q = self.car_pose
+        Q = np.array([self.car_pose.position.x, self.car_pose.position.y])
         # Q = np.array([5.5, 4.5])
         r = self.lookahead
-        P1 = np.array([pt1.pose.position.x, pt1.pose.position.y])
-        V = np.array([pt2.pose.position.x, pt2.pose.position.y]) - P1
+        P1 = np.array([pt1[0], pt1[1]])
+        V = np.array([pt2[0], pt2[1]]) - P1
         # print('Q: ', Q)
         # print('r: ', r)
         # print('P1: ', P1)
@@ -116,7 +135,7 @@ class PurePursuit(object):
         # print(goal_1)
         # print(goal_2)
 
-        goal = self.break_tie(goal_1, goal_2, np.array([pt2.pose.position.x, pt2.pose.position.y]))
+        goal = self.break_tie(goal_1, goal_2, np.array([pt2[0], pt2[1]]))
         # print(goal)
         return goal
 
@@ -176,7 +195,7 @@ class PurePursuit(object):
             drive_cmd.drive.speed = self.speed
         
         # publish the drive command
-        self.drive_pub(drive_cmd)
+        self.drive_pub.publish(drive_cmd)
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
