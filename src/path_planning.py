@@ -9,13 +9,19 @@ import time, os
 from utils import LineTrajectory
 import tf.transformations as trans
 from scipy import ndimage
+import heapdict
+
+
 
 
 class Node:
-    def __init__(self, cur, parent=None):
+    def __init__(self, cur, g_cost, h_cost, parent=None):
         self.cur = cur
         self.x, self.y = cur
         self.parent = parent
+        self.g_cost = g_cost
+        self.h_cost = h_cost
+        self.f_cost = g_cost + h_cost
 
 
 class PathPlan(object):
@@ -29,7 +35,6 @@ class PathPlan(object):
         self.map = None
         self.resolution = None
         self.origin = None
-        # self.rng = np.random.default_rng()
 
         self.odom_topic = rospy.get_param("~odom_topic")
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_cb)
@@ -40,17 +45,10 @@ class PathPlan(object):
 
 
     def map_cb(self, msg):
-        # print(type(msg.data))
-        # print(len(msg.data))
         new_map = ndimage.binary_dilation(np.array(msg.data).reshape(msg.info.height, msg.info.width).T, iterations=3).astype(float) * 100
         new_resolution = msg.info.resolution
         new_origin = self.get_origin(msg.info.origin)
         if self.map is None or self.map != new_map or self.res is None or self.resolution != new_resolution or self.origin is None or self.origin != new_origin:
-            # print(new_map.shape)
-            # print(msg.info.width, msg.info.height)
-            # print(new_origin)
-            # print(new_resolution)
-            # print("got map")
             self.map = new_map
             self.resolution = new_resolution
             self.origin = new_origin
@@ -60,7 +58,6 @@ class PathPlan(object):
     def odom_cb(self, msg):
         new_start = self.get_pose(msg.pose.pose)
         if self.start != new_start:
-            # print("got start")
             self.start = new_start
             self.try_plan_path()
 
@@ -68,7 +65,6 @@ class PathPlan(object):
     def goal_cb(self, msg):
         new_end = self.get_pose(msg.pose)
         if self.end != new_end:
-            # print("got end")
             self.end = new_end
             self.try_plan_path()
 
@@ -135,108 +131,69 @@ class PathPlan(object):
         return cells
 
 
+    def get_neighbors(self, node, map):
+        neighbors = []
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                new_x, new_y = int(node.x + dx), int(node.y + dy)
+                if 0 <= new_x < map.shape[0] and 0 <= new_y < map.shape[1] and map[new_x, new_y] == 0:
+                    neighbor = Node((new_x, new_y), node)
+                    neighbors.append(neighbor)
+        return neighbors
+
+
+
+    def h_cost(self, node, goal):
+        return abs(node.x - goal.x) + abs(node.y - goal.y)
+
+
     def plan_path(self, start_point, end_point, map):
-        ## CODE FOR PATH PLANNING ##
-        # print("planning path")
         self.trajectory.clear()
 
-        # print(start_point)
-        # print(end_point)
-        # print(self.origin)
-        # print(self.resolution)
         start_node = Node(self.convert_to_cell(start_point))
-        costs = {start_node:0}
-        end_pose = (self.convert_to_cell(end_point))
-        # print(start_node.cur)
-        # print(end_pose)
+        end_node = Node(self.convert_to_cell(end_point))
 
-        # print(tuple(np.floor(start_node.cur).astype(int)))
-        # print(tuple(np.floor(end_pose).astype(int)))
-        # print(map[tuple(np.floor(start_node.cur).astype(int))])
-        # print(map[tuple(np.floor(end_pose).astype(int))])
+        open_list = heapdict()
+        open_list[start_node] = 0
 
-        first_sample = True
-        i = 0
-        while True:
-            sample = end_pose if first_sample or np.random.random_sample() < .05 else (np.random.random_sample() * map.shape[0], np.random.random_sample() * map.shape[1])
-            # print(sample)
-            # print(sample==end_pose)
-            # if sample == end_pose:
-            #     print(i)
-            # if (i % 1000)==0:
-            #     print(costs)
-            if map[tuple(np.floor(sample).astype(int))] == 0:
-                # sampled pose is in a free node
-                nearest = min(costs.keys(), key=lambda node: self.dist(node.cur, sample))
-                dist = self.dist(nearest.cur, sample)
-                max_dist = 10.
-                # if (i%100) == 0:
-                #     print("before:",sample)
-                #     print(i)
-                #     print(sample == end_pose)
-                #     print("near:",nearest.cur)
-                if dist > max_dist:
-                    scale = max_dist/dist
-                    sample = (nearest.cur[0] + (sample[0]-nearest.cur[0])*scale, nearest.cur[1] + (sample[1]-nearest.cur[1])*scale)
-                    dist = self.dist(nearest.cur, sample)
-                # print(dist)
-                # if (i%100) == 0:
-                #     print("after:",sample)
-                # self.trajectory.addPoint(Node(self.convert_to_point(start_node.cur)))
-                # self.trajectory.addPoint(Node(self.convert_to_point(sample)))
-                # break
-                if map[tuple(np.floor(sample).astype(int))] == 0:
-                    # print("close good")
-                    # print(nearest.cur, sample)
-                    if self.path_clear(nearest.cur, sample, map):
-                        # print("path good")
-                        near_nodes = filter(lambda node: self.dist(node.cur, sample) <= max_dist, costs.keys())
-                        min_node = nearest
-                        min_cost = costs[nearest] + dist
-                        clear_nodes = set()
-                        for near_node in near_nodes:
-                            new_cost = costs[near_node] + self.dist(near_node.cur, sample)
-                            if self.path_clear(near_node.cur, sample, map):
-                                clear_nodes.add(near_node)
-                                if new_cost < min_cost:
-                                    min_node = near_node
-                                    min_cost = new_cost
-                        sample_node = Node(sample, min_node)
-                        costs[sample_node] = min_cost
-                        for near_node in clear_nodes:
-                            new_cost = costs[sample_node] + self.dist(near_node.cur, sample)
-                            if new_cost < costs[near_node]:
-                                near_node.parent = sample_node
-                                costs[near_node] = new_cost
-                        if sample == end_pose:
-                            cur_node = sample_node
-                            path = []
-                            while cur_node is not None:
-                                path.append(cur_node.cur)
-                                cur_node = cur_node.parent
-                            for node in path[::-1]:
-                                self.trajectory.addPoint(Node(self.convert_to_point(node)))
-                            break
-                #     else:
-                #         print("path bad")
-                # else:
-                #     print("close bad")
-            # if i % 1000 == 0:
-            #     print(len(costs))
-            # if len(costs) > 10000:
-            #     print("quitting")
-            #     for node in costs:
-            #         self.trajectory.addPoint(Node(self.convert_to_point(node.cur)))
-            #     print("quitting")
-            #     break
-            first_sample = False
-            i += 1
-        
-        # publish trajectory
+        closed_list = set()
+
+        g_cost = {start_node: 0}
+        f_cost = {start_node: self.dist(start_node.cur, end_node.cur)}
+
+        while open_list:
+            current_node, _ = open_list.popitem()
+
+            if current_node == end_node:
+                path = []
+                while current_node is not None:
+                    path.append(current_node)
+                    current_node = current_node.parent
+                for node in path[::-1]:
+                    self.trajectory.addPoint(Node(self.convert_to_point(node.cur)))
+                break
+
+            closed_list.add(current_node)
+
+            neighbors = self.get_neighbors(current_node, map)
+            for neighbor in neighbors:
+                if neighbor in closed_list:
+                    continue
+
+                tentative_g_cost = g_cost[current_node] + self.dist(current_node.cur, neighbor.cur)
+
+                if neighbor not in open_list or tentative_g_cost < g_cost[neighbor]:
+                    neighbor.parent = current_node
+                    g_cost[neighbor] = tentative_g_cost
+                    f_cost[neighbor] = tentative_g_cost + self.dist(neighbor.cur, end_node.cur)
+                    open_list[neighbor] = f_cost[neighbor]
+
         self.traj_pub.publish(self.trajectory.toPoseArray())
-
-        # visualize trajectory Markers
         self.trajectory.publish_viz()
+
+
 
 
 if __name__=="__main__":
