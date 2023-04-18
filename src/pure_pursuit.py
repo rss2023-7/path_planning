@@ -23,7 +23,7 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 10
+        self.lookahead        = 5
         self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
@@ -36,6 +36,9 @@ class PurePursuit(object):
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_callback, queue_size=1)
         self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
         self.car_pose = None
+
+        # for visualization
+        self.goal_point_pub = rospy.Publisher("/goal_point", Marker, queue_size=1)
 
     def trajectory_callback(self, msg):
         """ Clears the currently followed trajectory, and loads the new one from the message
@@ -50,13 +53,35 @@ class PurePursuit(object):
         """
         if len(self.trajectory.points) > 1:
 
-
             self.car_pose = msg.pose.pose
 
             self.update_traj(self.car_pose)
-            print("we are between points ", self.cur_traj)
+
+            #print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
 
             goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+            marker = Marker()
+            marker.type = marker.CYLINDER
+            marker.action = marker.ADD
+            marker.scale.x = 0.2
+            marker.scale.y = 0.2
+            marker.scale.z = 0.2
+            marker.color.a = 1.0
+            marker.color.r = 1.0
+            marker.color.g = 0.5
+
+
+            marker.header.frame_id = "map"
+            marker.pose.position.x = goal_point[0]
+            marker.pose.position.y = goal_point[1]
+            marker.pose.position.z = 0
+            marker.pose.orientation.x = 0
+            marker.pose.orientation.y = 0
+            marker.pose.orientation.z = 0
+            marker.pose.orientation.w = 1
+
+
+            self.goal_point_pub.publish(marker)
 
             self.drive_to_goal(goal_point)
     
@@ -103,20 +128,20 @@ class PurePursuit(object):
         r = self.lookahead
         P1 = np.array([pt1[0], pt1[1]])
         V = np.array([pt2[0], pt2[1]]) - P1
-        print('Q: ', Q)
-        print('r: ', r)
-        print('P1: ', P1)
-        print('V: ', V)
+        # print('Q: ', Q)
+        # print('r: ', r)
+        # print('P1: ', P1)
+        # print('V: ', V)
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
         c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
-        print('a: ', a)
-        print('b: ', b)
-        print('c: ', c)
+        # print('a: ', a)
+        # print('b: ', b)
+        # print('c: ', c)
 
         disc = b ** 2 - 4 * a * c
-        print('disc: ', disc)
+        # print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
             rospy.loginfo('No Path Found')
@@ -187,6 +212,10 @@ class PurePursuit(object):
             
             # determine drive angle (taken from parking controller)
             drive_angle = np.arctan2(goal_y, goal_x)
+
+            print("car is at ", car_x, ", ", car_y)
+            print("goal is at ", goal_x, ", ", goal_y)
+            print("drive angle is ", drive_angle)
 
             drive_cmd.drive.steering_angle = drive_angle
             drive_cmd.drive.speed = self.speed
