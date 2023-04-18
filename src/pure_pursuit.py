@@ -5,6 +5,8 @@ import numpy as np
 import time
 import utils
 import tf
+import tf.transformations as trans
+
 
 from geometry_msgs.msg import PoseArray, PoseStamped
 from visualization_msgs.msg import Marker
@@ -23,7 +25,7 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 5
+        self.lookahead        = 1.5
         self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
@@ -189,36 +191,50 @@ class PurePursuit(object):
         # and
         # b) car is within some acceptable distance of the current goal point
         if  self.trajectory.points[-1][0] == goal_point[0] and self.trajectory.points[-1][1] == goal_point[1]:
+            rospy.loginfo("broke?")
             drive_cmd.drive.steering_angle = 0
             drive_cmd.drive.speed = 0
 
         # otherwise, navigate to the current goal point
         else:
 
+            # transform from map to car
+            rot = trans.quaternion_matrix([self.car_pose.orientation.x, self.car_pose.orientation.y, self.car_pose.orientation.z, self.car_pose.orientation.w])[:3,:3]
+            print(rot)
+            rospy.loginfo("og "+str(goal_point))
+            rospy.loginfo("car is at "+str((self.car_pose.position.x,self.car_pose.position.y)))
+            goal_coords = np.matmul(np.array([[goal_point[0]], [goal_point[1]], [0]]).T, rot) + np.array([[self.car_pose.position.x], [self.car_pose.position.y], [0]]).T
+            rospy.loginfo("transformed! "+str(goal_coords))
+
             # define car position
-            car_x = self.car_pose.position.x
-            car_y = self.car_pose.position.y
+            #car_x = self.car_pose.position.x
+            #car_y = self.car_pose.position.y
             
             # define goal position
-            goal_x = goal_point[0]
-            goal_y = goal_point[1]
+            #goal_x = goal_point[0]
+            #goal_y = goal_point[1]
             
             # normalize coords so as to place car at artificial origin
-            car_x -= car_x
-            goal_x -= car_x
+            #car_x -= car_x
+            #goal_x -= car_x
             
-            car_y -= car_y
-            goal_y -= car_y
+            #car_y -= car_y
+            #goal_y -= car_y
             
             # determine drive angle (taken from parking controller)
-            drive_angle = np.arctan2(goal_y, goal_x)
+            drive_angle = np.arctan2(goal_coords[0, 1], goal_coords[0, 0])
 
-            print("car is at ", car_x, ", ", car_y)
-            print("goal is at ", goal_x, ", ", goal_y)
-            print("drive angle is ", drive_angle)
+            #print("car is at ", car_x, ", ", car_y)
+            #print("goal is at ", goal_x, ", ", goal_y)
+            #print("drive angle is ", drive_angle)
 
-            drive_cmd.drive.steering_angle = drive_angle
-            drive_cmd.drive.speed = self.speed
+            print("desired angle: ", drive_angle)
+
+            drive_cmd.drive.steering_angle = 0
+            drive_cmd.drive.speed = 0
+
+            # drive_cmd.drive.steering_angle = drive_angle
+            # drive_cmd.drive.speed = self.speed
         
         # publish the drive command
         self.drive_pub.publish(drive_cmd)
