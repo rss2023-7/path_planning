@@ -25,8 +25,8 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.5
-        self.speed            = 1.0
+        self.lookahead        = 1.0
+        self.speed            = 0.5
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -203,7 +203,7 @@ class PurePursuit(object):
             print(rot)
             rospy.loginfo("og "+str(goal_point))
             rospy.loginfo("car is at "+str((self.car_pose.position.x,self.car_pose.position.y)))
-            goal_coords = np.matmul(np.array([[goal_point[0]], [goal_point[1]], [0]]).T, rot) + np.array([[self.car_pose.position.x], [self.car_pose.position.y], [0]]).T
+            goal_coords = np.matmul(np.array([[goal_point[0]], [goal_point[1]], [0]]).T, rot) - np.array([[self.car_pose.position.x], [self.car_pose.position.y], [0]]).T
             rospy.loginfo("transformed! "+str(goal_coords))
 
             # define car position
@@ -230,11 +230,11 @@ class PurePursuit(object):
 
             print("desired angle: ", drive_angle)
 
-            drive_cmd.drive.steering_angle = 0
-            drive_cmd.drive.speed = 0
+            #drive_cmd.drive.steering_angle = 0
+            #drive_cmd.drive.speed = 0
 
-            # drive_cmd.drive.steering_angle = drive_angle
-            # drive_cmd.drive.speed = self.speed
+            drive_cmd.drive.steering_angle = drive_angle
+            drive_cmd.drive.speed = self.speed
         
         # publish the drive command
         self.drive_pub.publish(drive_cmd)
