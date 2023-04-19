@@ -157,6 +157,7 @@ class PurePursuit(object):
         # print(goal_1)
         # print(goal_2)
 
+        # should be super rare but may want to add check in case only one line falls on the circle
         goal = self.break_tie(goal_1, goal_2, np.array([pt2[0], pt2[1]]))
         # print(goal)
         return goal
