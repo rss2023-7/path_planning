@@ -25,8 +25,8 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.0
-        self.speed            = 0.5
+        self.lookahead        = 1.5
+        self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -62,15 +62,18 @@ class PurePursuit(object):
             #print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
 
             while True:
-                goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
-                if goal_point is None:
-                    if self.cur_traj[1] == len(self.trajectory.points)-1:
-                        goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
-                        break
+                try:
+                    goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+                    if goal_point is None:
+                        if self.cur_traj[1] == len(self.trajectory.points)-1:
+                            goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
+                            break
+                        else:
+                            self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
                     else:
-                        self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
-                else:
-                    break
+                        break
+                except:
+                    return
             marker = Marker()
             marker.type = marker.CYLINDER
             marker.action = marker.ADD
@@ -157,7 +160,7 @@ class PurePursuit(object):
         # print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
-            rospy.loginfo('No Path Found')
+            # rospy.loginfo('No Path Found')
             raise NoGoalFoundException
 
         sqrt_disc = np.sqrt(disc)
