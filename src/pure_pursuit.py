@@ -27,7 +27,7 @@ class PurePursuit(object):
         
         # these numbers can be played with
         self.lookahead        = 1.5
-        self.speed            = 1.0
+        self.speed            = 2.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -45,6 +45,7 @@ class PurePursuit(object):
 
         # for analytics
         self.error_pub = rospy.Publisher("/linear_error", Float32, queue_size=1)
+        self.prev_error = 0
 
     def trajectory_callback(self, msg):
         """ Clears the currently followed trajectory, and loads the new one from the message
@@ -66,15 +67,19 @@ class PurePursuit(object):
             #print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
 
             while True:
-                goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
-                if goal_point is None:
-                    if self.cur_traj[1] == len(self.trajectory.points)-1:
-                        goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
-                        break
+                try:
+                    goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+                    if goal_point is None:
+                        if self.cur_traj[1] == len(self.trajectory.points)-1:
+                            goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
+                            break
+                        else:
+                            self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
                     else:
-                        self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
-                else:
-                    break
+                        break
+                except:
+                    return
+                
             marker = Marker()
             marker.type = marker.CYLINDER
             marker.action = marker.ADD
@@ -94,7 +99,6 @@ class PurePursuit(object):
             marker.pose.orientation.y = 0
             marker.pose.orientation.z = 0
             marker.pose.orientation.w = 1
-
 
             self.goal_point_pub.publish(marker)
 
@@ -136,7 +140,8 @@ class PurePursuit(object):
             self.cur_traj = (val, val+1)
 
             # publish error here
-            self.error_pub.publish(dists[val])
+            self.error_pub.publish(dists[val] - self.prev_error)
+            self.prev_error = dists[val]
 
             # self.cur_traj[0] = np.argmin(dists)
             # self.cur_traj[1] = self.cur_traj[0] + 1
