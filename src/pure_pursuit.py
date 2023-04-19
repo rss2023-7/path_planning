@@ -12,6 +12,7 @@ from geometry_msgs.msg import PoseArray, PoseStamped
 from visualization_msgs.msg import Marker
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Float32
 
 class NoGoalFoundException(Exception):
     '''Raised when no goal could be found'''
@@ -25,8 +26,8 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.0
-        self.speed            = 0.5
+        self.lookahead        = 1.5
+        self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -41,6 +42,9 @@ class PurePursuit(object):
 
         # for visualization
         self.goal_point_pub = rospy.Publisher("/goal_point", Marker, queue_size=1)
+
+        # for analytics
+        self.error_pub = rospy.Publisher("/linear_error", Float32, queue_size=1)
 
     def trajectory_callback(self, msg):
         """ Clears the currently followed trajectory, and loads the new one from the message
@@ -130,6 +134,10 @@ class PurePursuit(object):
             dists = np.array([dist_to_seg2(path[i], path[i+1], car_pose) for i in range(len(path)-1)])
             val = np.argmin(dists)
             self.cur_traj = (val, val+1)
+
+            # publish error here
+            self.error_pub.publish(dists[val])
+
             # self.cur_traj[0] = np.argmin(dists)
             # self.cur_traj[1] = self.cur_traj[0] + 1
 
