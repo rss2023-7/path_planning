@@ -61,7 +61,16 @@ class PurePursuit(object):
 
             #print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
 
-            goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+            while True:
+                goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
+                if goal_point is None:
+                    if self.cur_traj[1] == len(self.trajectory.points)-1:
+                        goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
+                        break
+                    else:
+                        self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
+                else:
+                    break
             marker = Marker()
             marker.type = marker.CYLINDER
             marker.action = marker.ADD
@@ -112,6 +121,8 @@ class PurePursuit(object):
             if l2 == 0:
                 return dist2(p1x, cx, p1y, cy)
             t = ((cx - p1x) * (p2x - p1x) + (cy - p1y) * (p2y - p1y))/l2
+            if t >= 1:
+                return np.inf
             t = max(0, min(1, t))
             return dist2(cx, p1x + t * (p2x - p1x), cy, p1y + t * (p2y - p1y))
         
@@ -151,7 +162,11 @@ class PurePursuit(object):
 
         sqrt_disc = np.sqrt(disc)
         t1 = (-b + sqrt_disc) / (2 * a)
+        if t1 > 1:
+            return None
         t2 = (-b - sqrt_disc) / (2 * a)
+        if t2 > 1:
+            return None
         # print(t1, t2)
 
         goal_1 = P1 + t1 * V
@@ -190,8 +205,7 @@ class PurePursuit(object):
         # a) current goal point is the final point in the trajectory
         # and
         # b) car is within some acceptable distance of the current goal point
-        if  self.trajectory.points[-1][0] == goal_point[0] and self.trajectory.points[-1][1] == goal_point[1]:
-            rospy.loginfo("broke?")
+        if self.trajectory.points[-1][0] == goal_point[0] and self.trajectory.points[-1][1] == goal_point[1]:
             drive_cmd.drive.steering_angle = 0
             drive_cmd.drive.speed = 0
 
@@ -200,41 +214,12 @@ class PurePursuit(object):
 
             # transform from map to car
             rot = trans.quaternion_matrix([self.car_pose.orientation.x, self.car_pose.orientation.y, self.car_pose.orientation.z, self.car_pose.orientation.w])[:3,:3]
-            print(rot)
-            rospy.loginfo("og "+str(goal_point))
-            rospy.loginfo("car is at "+str((self.car_pose.position.x,self.car_pose.position.y)))
-            goal_coords = np.matmul(np.array([[goal_point[0]], [goal_point[1]], [0]]).T, rot) + np.array([[self.car_pose.position.x], [self.car_pose.position.y], [0]]).T
-            rospy.loginfo("transformed! "+str(goal_coords))
+            goal_coords = np.matmul(np.array([[goal_point[0]], [goal_point[1]], [0]]).T - np.array([[self.car_pose.position.x], [self.car_pose.position.y], [0]]).T, rot)
 
-            # define car position
-            #car_x = self.car_pose.position.x
-            #car_y = self.car_pose.position.y
-            
-            # define goal position
-            #goal_x = goal_point[0]
-            #goal_y = goal_point[1]
-            
-            # normalize coords so as to place car at artificial origin
-            #car_x -= car_x
-            #goal_x -= car_x
-            
-            #car_y -= car_y
-            #goal_y -= car_y
-            
             # determine drive angle (taken from parking controller)
             drive_angle = np.arctan2(goal_coords[0, 1], goal_coords[0, 0])
-
-            #print("car is at ", car_x, ", ", car_y)
-            #print("goal is at ", goal_x, ", ", goal_y)
-            #print("drive angle is ", drive_angle)
-
-            print("desired angle: ", drive_angle)
-
-            drive_cmd.drive.steering_angle = 0
-            drive_cmd.drive.speed = 0
-
-            # drive_cmd.drive.steering_angle = drive_angle
-            # drive_cmd.drive.speed = self.speed
+            drive_cmd.drive.steering_angle = drive_angle
+            drive_cmd.drive.speed = self.speed
         
         # publish the drive command
         self.drive_pub.publish(drive_cmd)
