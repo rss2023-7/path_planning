@@ -25,8 +25,8 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.5
-        self.speed            = 1.0
+        self.lookahead        = 2.5
+        self.speed            = 2.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -66,7 +66,7 @@ class PurePursuit(object):
                     goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
                     if goal_point is None:
                         if self.cur_traj[1] == len(self.trajectory.points)-1:
-                            goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
+                            goal_point = np.array([self.trajectory.points[-1][0], self.trajectory.points[-1][1]])
                             break
                         else:
                             self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
