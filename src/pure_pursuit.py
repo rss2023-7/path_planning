@@ -25,8 +25,8 @@ class PurePursuit(object):
         self.odom_topic       = rospy.get_param("~odom_topic")
         
         # these numbers can be played with
-        self.lookahead        = 1.0
-        self.speed            = 0.5
+        self.lookahead        = 1.5
+        self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
