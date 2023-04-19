@@ -155,10 +155,11 @@ class PathPlan(object):
         # print(map[tuple(np.floor(start_node.cur).astype(int))])
         # print(map[tuple(np.floor(end_pose).astype(int))])
 
-        first_sample = True
+        # first_sample = True
         i = 0
+        done = None
         while True:
-            sample = end_pose if first_sample or np.random.random_sample() < .05 else (np.random.random_sample() * map.shape[0], np.random.random_sample() * map.shape[1])
+            sample = end_pose if done is None and (i==0 or np.random.random_sample() < .05) else (np.random.random_sample() * map.shape[0], np.random.random_sample() * map.shape[1])
             # print(sample)
             # print(sample==end_pose)
             # if sample == end_pose:
@@ -209,14 +210,16 @@ class PathPlan(object):
                                 near_node.parent = sample_node
                                 costs[near_node] = new_cost
                         if sample == end_pose:
-                            cur_node = sample_node
-                            path = []
-                            while cur_node is not None:
-                                path.append(cur_node.cur)
-                                cur_node = cur_node.parent
-                            for node in path[::-1]:
-                                self.trajectory.addPoint(Node(self.convert_to_point(node)))
-                            break
+                            done = i
+                            end_node = sample_node
+                            # cur_node = sample_node
+                            # path = []
+                            # while cur_node is not None:
+                            #     path.append(cur_node.cur)
+                            #     cur_node = cur_node.parent
+                            # for node in path[::-1]:
+                            #     self.trajectory.addPoint(Node(self.convert_to_point(node)))
+                            # break
                 #     else:
                 #         print("path bad")
                 # else:
@@ -229,7 +232,16 @@ class PathPlan(object):
             #         self.trajectory.addPoint(Node(self.convert_to_point(node.cur)))
             #     print("quitting")
             #     break
-            first_sample = False
+            # first_sample = False
+            if done is not None and i > done*1.1:
+                cur_node = end_node
+                path = []
+                while cur_node is not None:
+                    path.append(cur_node.cur)
+                    cur_node = cur_node.parent
+                for node in path[::-1]:
+                    self.trajectory.addPoint(Node(self.convert_to_point(node)))
+                break
             i += 1
         
         # publish trajectory
