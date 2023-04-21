@@ -24,6 +24,7 @@ class PathPlan:
         self.loaded_map = None
         self.origin_pub = rospy.Publisher("/map_origin", PoseStamped, queue_size=10)
         self.goal_pub = rospy.Publisher("/goal_point", PoseStamped, queue_size=10)
+        self.point_pub = rospy.Publisher("/point", PoseStamped, queue_size=10)
 
     def get_pose(self, pose):
         x = pose.position.x
@@ -37,31 +38,9 @@ class PathPlan:
         self.map_received = True
         self.loaded_map = map
 
-        #publish a point that visualizes in RVIZ the map origin
-        origin = PoseStamped()
-        origin.header.frame_id = "map"
-        origin.pose.position.x = map.info.origin.position.x
-        origin.pose.position.y = map.info.origin.position.y
-        origin.pose.position.z = map.info.origin.position.z
-        origin.pose.orientation.x = map.info.origin.orientation.x
-        origin.pose.orientation.y = map.info.origin.orientation.y
-        origin.pose.orientation.z = map.info.origin.orientation.z
-        origin.pose.orientation.w = map.info.origin.orientation.w
-        self.origin_pub.publish(origin)
-        rospy.loginfo("Map origin: {}".format(map.info))
-
-     
 
         
 
-        # rospy.loginfo("Map received: {}".format(self.map_received))
-        # rospy.loginfo("Map size: {} x {}".format(map.info.width, map.info.height))
-        # rospy.loginfo("Map resolution: {}".format(map.info.resolution))
-        # rospy.loginfo("Map origin: {}".format(map.info.origin))
-        # rospy.loginfo("Map array: {}".format(self.map_array))
-        # rospy.loginfo("Map meta: {}".format(self.map_meta))
-        # #log the resolution data and origin data from map_meta
-        # rospy.loginfo("Map resolution from meta: {}".format(self.map_meta.resolution))
 
 
     def goal_cb(self, end):
@@ -72,27 +51,45 @@ class PathPlan:
 
     def odom_cb(self, odom):
         self.start = self.get_pose(odom.pose.pose)
-        # rospy.loginfo("Start received: {}".format(self.start))
+        rospy.loginfo("Start received: {}".format(self.start))
         if self.map_received and hasattr(self, 'end'):
             self.plan_path(self.start, self.end, self.loaded_map)
 
 
 
     def world_to_grid(self, x, y, map):
-        u = int((x - map.info.origin.position.x) / map.info.resolution)
-        v = int((y - map.info.origin.position.y) / map.info.resolution)
-        # rospy.loginfo("Got to world_to_grid func, Map origin: {}".format(map.info.origin))
+        # min_world_x_coord = -(map.info.width * map.info.resolution - map.info.origin.position.x)
+        max_world_x_coord = map.info.origin.position.x
+        min_world_y_coord = -(map.info.height * map.info.resolution - map.info.origin.position.y)
+        # max_world_y_coord = map.info.origin.position.y
+        # min_grid_x_coord = 0
+        # max_grid_x_coord = map.info.width
+        # min_grid_y_coord = 0
+        # max_grid_y_coord = map.info.height 
+  
+
+        u = int(abs(y - min_world_y_coord) / map.info.resolution)
+        v = int(abs(x - max_world_x_coord) / map.info.resolution)
+
+
 
         return u, v
+
 
     def plan_path(self, start_point, end_point, map):
         # rospy.loginfo("Got to plan_path func, Map origin: {}".format(map.info.origin))
         # rospy.loginfo("Start point: {}".format(start_point))
         # rospy.loginfo("End point: {}".format(end_point))
+        # Publish point at grid value [10, 10]
+        # point = PoseStamped()
+        # point.header.frame_id = "map"
+
+        
 
          
         start_u, start_v = self.world_to_grid(start_point[0], start_point[1], map)
         end_u, end_v = self.world_to_grid(end_point[0], end_point[1], map)
+
         
     
         # rospy.loginfo("Start u: {}".format(start_u))
@@ -128,7 +125,7 @@ class PathPlan:
             neighbors = []
             for du, dv in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
                 if 0 <= u + du < map.info.width and 0 <= v + dv < map.info.height:
-                    rospy.loginfo("Map array occupancy: {}".format(self.map_array[v + dv, u + du]))
+                    # rospy.loginfo("Map array occupancy: {}".format(self.map_array[v + dv, u + du]))
                     if self.map_array[v + dv, u + du] < 50:
                         neighbors.append((u + du, v + dv))
             # rospy.loginfo("Neighbors: {}".format(neighbors))
