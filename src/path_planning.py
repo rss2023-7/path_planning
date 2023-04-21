@@ -1,226 +1,173 @@
 #!/usr/bin/env python
 
 import rospy
+import math
 import numpy as np
-from geometry_msgs.msg import PoseStamped, PoseArray
-from nav_msgs.msg import Odometry, OccupancyGrid
-import rospkg
-import time, os
-from utils import LineTrajectory
+from heapq import heappush, heappop
+from collections import deque
+from nav_msgs.msg import OccupancyGrid, Path, Odometry
+from geometry_msgs.msg import PoseStamped, Point, PoseArray
 import tf.transformations as trans
-from scipy import ndimage
-import heapdict
+from utils import LineTrajectory
 
-
-
-
-
-class Node:
-    def __init__(self, position, parent=None):
-        self.cur = position
-        self.x, self.y = position
-        self.parent = parent
-
-    def __eq__(self, other):
-        return self.x == other.x and self.y == other.y
-
-    def __hash__(self):
-        return hash((self.x, self.y))
-
-    def __lt__(self, other):
-        return self.cur < other.cur
-
-
-
-class PathPlan(object):
-    """ Listens for goal pose published by RViz and uses it to plan a path from
-    current car pose.
-    """
+class PathPlan:
     def __init__(self):
-
-        self.start = None
-        self.end = None
-        self.map = None
-        self.resolution = None
-        self.origin = None
-
         self.odom_topic = rospy.get_param("~odom_topic")
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_cb)
         self.trajectory = LineTrajectory("/planned_trajectory")
         self.goal_sub = rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.goal_cb, queue_size=10)
         self.traj_pub = rospy.Publisher("/trajectory/current", PoseArray, queue_size=10)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_cb)
-
-
-    def map_cb(self, msg):
-        new_map = ndimage.binary_dilation(np.array(msg.data).reshape(msg.info.height, msg.info.width).T, iterations=3).astype(float) * 100
-        new_resolution = msg.info.resolution
-        new_origin = self.get_origin(msg.info.origin)
-        if self.map is None or self.map != new_map or self.res is None or self.resolution != new_resolution or self.origin is None or self.origin != new_origin:
-            self.map = new_map
-            self.resolution = new_resolution
-            self.origin = new_origin
-            self.try_plan_path()
-
-
-    def odom_cb(self, msg):
-        new_start = self.get_pose(msg.pose.pose)
-        if self.start != new_start:
-            self.start = new_start
-            self.try_plan_path()
-
-
-    def goal_cb(self, msg):
-        new_end = self.get_pose(msg.pose)
-        if self.end != new_end:
-            self.end = new_end
-            self.try_plan_path()
-
+        self.map_received = False
+        self.map_array = None
+        self.map_meta = None
+        self.loaded_map = None
+        self.origin_pub = rospy.Publisher("/map_origin", PoseStamped, queue_size=10)
+        self.goal_pub = rospy.Publisher("/goal_point", PoseStamped, queue_size=10)
 
     def get_pose(self, pose):
         x = pose.position.x
         y = pose.position.y
         theta, _, _ = trans.rotation_from_matrix(trans.quaternion_matrix([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]))
         return (x, y, theta)
-
-
-    def get_origin(self, pose):
-        x = pose.position.x
-        y = pose.position.y
-        rot = trans.quaternion_matrix([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])[:3,:3]
-        return (x, y, rot)
-
-
-    def try_plan_path(self):
-        if self.start is not None and self.end is not None and self.map is not None:
-            self.plan_path(self.start, self.end, self.map)
-
-
-    def dist(self, node, sample):
-        return np.sqrt((node[0]-sample[0])**2 + (node[1]-sample[1])**2)
-
-
-    def path_clear(self, state, end, map):
-        for cell in self.get_cells(state, end):
-            if not (map[cell] == 0):
-                return False
-        return True
     
+    def map_cb(self, map):
+        self.map_array = np.array(map.data, dtype=np.int8).reshape((map.info.height, map.info.width))
+        self.map_meta = map.info
+        self.map_received = True
+        self.loaded_map = map
 
-    def convert_to_cell(self, point):
-        res = (np.matmul(np.array([[point[0]], [point[1]], [0]]).T, self.origin[2]) + np.array([[self.origin[0]], [self.origin[1]], [0]]).T)/self.resolution
-        return (res[0,0], res[0,1])
+        #publish a point that visualizes in RVIZ the map origin
+        origin = PoseStamped()
+        origin.header.frame_id = "map"
+        origin.pose.position.x = map.info.origin.position.x
+        origin.pose.position.y = map.info.origin.position.y
+        origin.pose.position.z = map.info.origin.position.z
+        origin.pose.orientation.x = map.info.origin.orientation.x
+        origin.pose.orientation.y = map.info.origin.orientation.y
+        origin.pose.orientation.z = map.info.origin.orientation.z
+        origin.pose.orientation.w = map.info.origin.orientation.w
+        self.origin_pub.publish(origin)
+        rospy.loginfo("Map origin: {}".format(map.info))
 
+     
 
-    def convert_to_point(self, cell):
-        res = np.matmul(np.array([[cell[0]], [cell[1]], [0]]).T * self.resolution, np.linalg.inv(self.origin[2])) + np.array([[self.origin[0]], [self.origin[1]], [0]]).T
-        return (res[0,0], res[0,1])
-    
+        
 
-    def get_cells(self, start, end):
-        u = start
-        v = (end[0] - start[0], end[1] - start[1])
-        X, Y = int(u[0]), int(u[1])
-
-        # Determine steps for X and Y
-        stepX = 1 if v[0] > 0 else -1 if v[0] < 0 else 0
-        stepY = 1 if v[1] > 0 else -1 if v[1] < 0 else 0
-
-        # Calculate tMax and tDelta values while avoiding division by zero
-        tMaxX = (np.round((u[0] * 2 + stepX) / 2) - u[0]) / v[0] if v[0] != 0 else np.inf
-        tMaxY = (np.round((u[1] * 2 + stepY) / 2) - u[1]) / v[1] if v[1] != 0 else np.inf
-        tDeltaX = abs(1 / v[0]) if v[0] != 0 else np.inf
-        tDeltaY = abs(1 / v[1]) if v[1] != 0 else np.inf
-
-        # Initialize cells list with starting point
-        cells = [(X, Y)]
-
-        # Loop until tMaxX and tMaxY are both greater than or equal to 1
-        while tMaxX < 1 or tMaxY < 1:
-            if tMaxX < tMaxY:
-                tMaxX += tDeltaX
-                X += stepX
-            else:
-                tMaxY += tDeltaY if not np.isinf(tDeltaY) else 0
-                Y += stepY
-
-            # Add new cell to the list
-            cells.append((X, Y))
-
-        return cells
+        # rospy.loginfo("Map received: {}".format(self.map_received))
+        # rospy.loginfo("Map size: {} x {}".format(map.info.width, map.info.height))
+        # rospy.loginfo("Map resolution: {}".format(map.info.resolution))
+        # rospy.loginfo("Map origin: {}".format(map.info.origin))
+        # rospy.loginfo("Map array: {}".format(self.map_array))
+        # rospy.loginfo("Map meta: {}".format(self.map_meta))
+        # #log the resolution data and origin data from map_meta
+        # rospy.loginfo("Map resolution from meta: {}".format(self.map_meta.resolution))
 
 
+    def goal_cb(self, end):
+        self.end = self.get_pose(end.pose)
+        rospy.loginfo("Goal received: {}".format(self.end))
+        if self.map_received and hasattr(self, 'start'):
+            self.plan_path(self.start, self.end, self.loaded_map)
 
-    def get_neighbors(self, node, map):
-        neighbors = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue
-                x, y = node.x + dx, node.y + dy
-                if 0 <= x < map.shape[0] and 0 <= y < map.shape[1] and map[int(x), int(y)] == 0 and self.path_clear(node.cur, (x, y), map):
-                    neighbors.append(Node((x, y), node))
-        return neighbors
+    def odom_cb(self, odom):
+        self.start = self.get_pose(odom.pose.pose)
+        # rospy.loginfo("Start received: {}".format(self.start))
+        if self.map_received and hasattr(self, 'end'):
+            self.plan_path(self.start, self.end, self.loaded_map)
 
 
 
+    def world_to_grid(self, x, y, map):
+        u = int((x - map.info.origin.position.x) / map.info.resolution)
+        v = int((y - map.info.origin.position.y) / map.info.resolution)
+        # rospy.loginfo("Got to world_to_grid func, Map origin: {}".format(map.info.origin))
 
-    def h_cost(self, node, goal):
-        return abs(node.x - goal.x) + abs(node.y - goal.y)
+        return u, v
 
     def plan_path(self, start_point, end_point, map):
-        self.trajectory.clear()
+        # rospy.loginfo("Got to plan_path func, Map origin: {}".format(map.info.origin))
+        # rospy.loginfo("Start point: {}".format(start_point))
+        # rospy.loginfo("End point: {}".format(end_point))
 
-        start_node = Node(self.convert_to_cell(start_point))
-        end_node = Node(self.convert_to_cell(end_point))
-        #log start and end nodes x and y values
-        rospy.loginfo("Start node: " + str(start_node.x) + " " + str(start_node.y))
-        rospy.loginfo("End node: " + str(end_node.x) + " " + str(end_node.y))
-        open_set = heapdict.heapdict()
-        open_set[start_node] = 0
-        closed_set = set()
+         
+        start_u, start_v = self.world_to_grid(start_point[0], start_point[1], map)
+        end_u, end_v = self.world_to_grid(end_point[0], end_point[1], map)
+        
+    
+        # rospy.loginfo("Start u: {}".format(start_u))
+        # rospy.loginfo("Start v: {}".format(start_v))
+        # rospy.loginfo("End u: {}".format(end_u))
+        # rospy.loginfo("End v: {}".format(end_v))
 
-        g_costs = {start_node: 0}
-        f_costs = {start_node: self.dist(start_node.cur, end_node.cur)}
 
-        while open_set:
-            current_node, _ = open_set.popitem()
+        def euclidean_distance(a, b):
+            return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
 
-            if current_node == end_node:
-                path = []
-                while current_node is not None:
-                    path.append(current_node)
-                    current_node = current_node.parent
-                path = path[::-1]
-                for node in path:
-                    self.trajectory.addPoint(Node(self.convert_to_point(node.cur)))
+        def reconstruct_path(came_from, current):
+            path = deque([current])
+            while current in came_from:
+                current = came_from[current]
+                path.appendleft(current)
+            return list(path)
+
+        def get_neighbors(u, v):
+            #log the dimensions of the map array
+            # rospy.loginfo("Map array dimensions: {}".format(self.map_array.shape))
+            # #log dimensions of map.info width and height
+            # rospy.loginfo("Map info width: {}".format(map.info.width))
+            # rospy.loginfo("Map info height: {}".format(map.info.height))
+            # #log the value of u and v
+            # rospy.loginfo("U: {}".format(u))
+            # rospy.loginfo("V: {}".format(v))
+            # #log the value of map_array[v, u]
+            # rospy.loginfo("Map array occupancy: {}".format(self.map_array[0, 0]))
+            # # log the min and max indexes of the map array
+            # rospy.loginfo("Map array min index: {}".format(self.map_array.min()))
+            # rospy.loginfo("Map array max index: {}".format(self.map_array.max()))
+            neighbors = []
+            for du, dv in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                if 0 <= u + du < map.info.width and 0 <= v + dv < map.info.height:
+                    rospy.loginfo("Map array occupancy: {}".format(self.map_array[v + dv, u + du]))
+                    if self.map_array[v + dv, u + du] < 50:
+                        neighbors.append((u + du, v + dv))
+            # rospy.loginfo("Neighbors: {}".format(neighbors))
+            return neighbors
+
+        frontier = []
+        heappush(frontier, (0, (start_u, start_v)))
+        came_from = {}
+        cost_so_far = {(start_u, start_v): 0}
+
+        while frontier:
+            _, current = heappop(frontier)
+            if current == (end_u, end_v):
+                path = reconstruct_path(came_from, current)
                 break
+            for neighbor in get_neighbors(*current):
+                new_cost = cost_so_far[current] + euclidean_distance(current, neighbor)
+                if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
+                    cost_so_far[neighbor] = new_cost
+                    priority = new_cost + euclidean_distance(neighbor, (end_u, end_v))
+                    heappush(frontier, (priority, neighbor))
+                    came_from[neighbor] = current
+        else:
+            # rospy.loginfo("No path found!")
+            return
 
-            closed_set.add(current_node)
+        # rospy.loginfo("Path found!")
+        self.trajectory.clear()
+        for u, v in path:
+            x = u * map.info.resolution + map.info.origin.position.x
+            y = v * map.info.resolution + map.info.origin.position.y
+            self.trajectory.addPoint(Point(x, y, 0))
 
-            neighbors = self.get_neighbors(current_node, map)
-            for neighbor in neighbors:
-                if neighbor in closed_set:
-                    continue
+        traj_msg = self.trajectory.toPoseArray()
+        self.traj_pub.publish(traj_msg)
 
-                tentative_g_cost = g_costs[current_node] + self.dist(current_node.cur, neighbor.cur)
-                if neighbor not in open_set or tentative_g_cost < g_costs[neighbor]:
-                    neighbor.parent = current_node
-                    g_costs[neighbor] = tentative_g_cost
-                    f_costs[neighbor] = g_costs[neighbor] + self.dist(neighbor.cur, end_node.cur)
-                    open_set[neighbor] = f_costs[neighbor]
-        #log the path
-        rospy.loginfo("Path: {}".format(self.trajectory))
-        rospy.loginfo("Path: {}".format(self.trajectory.toPoseArray()))
-
-        self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
 
-
-
-
-
-if __name__=="__main__":
-    rospy.init_node("path_planning")
-    pf = PathPlan()
+if __name__ == "__main__":
+    rospy.init_node("path_planner")
+    path_planner = PathPlan()
     rospy.spin()
