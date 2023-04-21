@@ -66,15 +66,17 @@ class PathPlan:
         # max_grid_x_coord = map.info.width
         # min_grid_y_coord = 0
         # max_grid_y_coord = map.info.height 
-  
-
         u = int(abs(y - min_world_y_coord) / map.info.resolution)
         v = int(abs(x - max_world_x_coord) / map.info.resolution)
-
-
-
         return u, v
-
+    def grid_to_world(self, u, v, map):
+        # min_world_x_coord = -(map.info.width * map.info.resolution - map.info.origin.position.x)
+        max_world_x_coord = map.info.origin.position.x
+        min_world_y_coord = -(map.info.height * map.info.resolution - map.info.origin.position.y)
+        # max_world_y_coord = map.info.origin.position.y
+        x = max_world_x_coord + v * map.info.resolution
+        y = min_world_y_coord + u * map.info.resolution
+        return x, y
 
     def plan_path(self, start_point, end_point, map):
         # rospy.loginfo("Got to plan_path func, Map origin: {}".format(map.info.origin))
@@ -83,15 +85,9 @@ class PathPlan:
         # Publish point at grid value [10, 10]
         # point = PoseStamped()
         # point.header.frame_id = "map"
-
-        
-
-         
         start_u, start_v = self.world_to_grid(start_point[0], start_point[1], map)
         end_u, end_v = self.world_to_grid(end_point[0], end_point[1], map)
 
-        
-    
         # rospy.loginfo("Start u: {}".format(start_u))
         # rospy.loginfo("Start v: {}".format(start_v))
         # rospy.loginfo("End u: {}".format(end_u))
@@ -149,14 +145,14 @@ class PathPlan:
                     heappush(frontier, (priority, neighbor))
                     came_from[neighbor] = current
         else:
-            # rospy.loginfo("No path found!")
+            rospy.loginfo("No path found!")
             return
 
-        # rospy.loginfo("Path found!")
+        rospy.loginfo("Path found!")
         self.trajectory.clear()
         for u, v in path:
-            x = u * map.info.resolution + map.info.origin.position.x
-            y = v * map.info.resolution + map.info.origin.position.y
+            x, y = self.grid_to_world(u, v, map)
+
             self.trajectory.addPoint(Point(x, y, 0))
 
         traj_msg = self.trajectory.toPoseArray()
