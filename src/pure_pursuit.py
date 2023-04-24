@@ -140,7 +140,7 @@ class PurePursuit(object):
         #Q = np.array([5.5, 4.5])
         r = self.lookahead
         P1 = np.array([pt1[0], pt1[1]])
-        V = np.array([pt2[0], pt2[1]]) - P1
+        V = np.array([pt2[0], pt2[1]]) - P1 # vector from P1 to P2
         # print('Q: ', Q)
         # print('r: ', r)
         # print('P1: ', P1)
@@ -148,12 +148,12 @@ class PurePursuit(object):
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
-        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
+        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r**2
         # print('a: ', a)
         # print('b: ', b)
         # print('c: ', c)
 
-        disc = b ** 2 - 4 * a * c
+        disc = b**2 - 4 * a * c
         # print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
@@ -162,10 +162,10 @@ class PurePursuit(object):
 
         sqrt_disc = np.sqrt(disc)
         t1 = (-b + sqrt_disc) / (2 * a)
-        if t1 > 1:
+        if t1 > 1: # line doesn't intersect circle
             return None
         t2 = (-b - sqrt_disc) / (2 * a)
-        if t2 > 1:
+        if t2 > 1: # line doesn't intersect circle
             return None
         # print(t1, t2)
 
