@@ -135,12 +135,12 @@ class PurePursuit(object):
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
-        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
+        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r**2
         # print('a: ', a)
         # print('b: ', b)
         # print('c: ', c)
 
-        disc = b ** 2 - 4 * a * c
+        disc = b**2 - 4 * a * c
         # print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
