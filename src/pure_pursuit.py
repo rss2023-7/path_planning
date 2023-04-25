@@ -101,6 +101,8 @@ class PurePursuit(object):
         '''
         path = self.trajectory.points[self.cur_traj[0]:]
         def dist_to_seg2(pt1, pt2, car):
+            """ calculates the distance from car's position to a line segment
+            """
             # p1x = pt1.pose.position.x
             # p1y = pt1.pose.position.y
             # p2x = pt2.pose.position.x
@@ -178,13 +180,13 @@ class PurePursuit(object):
         # print(goal)
         return goal
 
-    def break_tie(self, pt1, pt2, next):
+    def break_tie(self, pt1, pt2, next_pt):
         """ break tie when two points lie along the circle
         """
         # dist_1 = np.sqrt((pt1.point.x - next.point.x)**2 + (pt1.point.y - next.point.y)**2)
         # dist_2 = np.sqrt((pt2.point.x - next.point.x)**2 + (pt2.point.y - next.point.y)**2)
-        dist_1 = np.sqrt((pt1[0] - next[0])**2 + (pt1[1] - next[1])**2)
-        dist_2 = np.sqrt((pt2[0] - next[0])**2 + (pt2[1] - next[1])**2)
+        dist_1 = np.sqrt((pt1[0] - next_pt[0])**2 + (pt1[1] - next_pt[1])**2)
+        dist_2 = np.sqrt((pt2[0] - next_pt[0])**2 + (pt2[1] - next_pt[1])**2)
         if dist_1 < dist_2:
             return pt1
         return pt2
