@@ -6,6 +6,7 @@ import time
 import utils
 import tf
 import tf.transformations as trans
+import tf2_ros
 
 
 from geometry_msgs.msg import PoseArray, PoseStamped
@@ -27,7 +28,11 @@ class PurePursuit(object):
         
         # these numbers can be played with
         self.lookahead        = 1.5
-        self.speed            = 1.0
+        self.speed            = 2.0
+
+        # init transform listener to get ground truth car location for sim only
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -121,6 +126,8 @@ class PurePursuit(object):
         '''
         path = self.trajectory.points[self.cur_traj[0]:]
         def dist_to_seg2(pt1, pt2, car):
+            """ calculates the distance from car's position to a line segment
+            """
             # p1x = pt1.pose.position.x
             # p1y = pt1.pose.position.y
             # p2x = pt2.pose.position.x
@@ -152,10 +159,11 @@ class PurePursuit(object):
             self.cur_traj = (val, val+1)
 
             # publish error here
-
-            self.path_error_pub.publish(dists[val])
-            self.delta_path_error_pub.publish(dists[val] - self.prev_error)
-            self.prev_error = dists[val]
+            ground_truth_pose = self.get_ground_truth_pose()
+            dists = np.array([dist_to_seg2(path[i], path[i+1], ground_truth_pose) for i in range(len(path)-1)])
+            val = np.argmin(dists)
+            self.error_pub.publish(dists[val])
+            #self.prev_error = dists[val]
 
             # self.cur_traj[0] = np.argmin(dists)
             # self.cur_traj[1] = self.cur_traj[0] + 1
@@ -179,10 +187,10 @@ class PurePursuit(object):
 
         sqrt_disc = np.sqrt(disc)
         t1 = (-b + sqrt_disc) / (2 * a)
-        if t1 > 1:
+        if t1 > 1: # line doesn't intersect circle
             return None
         t2 = (-b - sqrt_disc) / (2 * a)
-        if t2 > 1:
+        if t2 > 1: # line doesn't intersect circle
             return None
 
         goal_1 = P1 + t1 * V
@@ -191,11 +199,13 @@ class PurePursuit(object):
         goal = self.break_tie(goal_1, goal_2, np.array([pt2[0], pt2[1]]))
         return goal
 
-    def break_tie(self, pt1, pt2, next):
+    def break_tie(self, pt1, pt2, next_pt):
         """ break tie when two points lie along the circle
         """
-        dist_1 = np.sqrt((pt1[0] - next[0])**2 + (pt1[1] - next[1])**2)
-        dist_2 = np.sqrt((pt2[0] - next[0])**2 + (pt2[1] - next[1])**2)
+        # dist_1 = np.sqrt((pt1.point.x - next.point.x)**2 + (pt1.point.y - next.point.y)**2)
+        # dist_2 = np.sqrt((pt2.point.x - next.point.x)**2 + (pt2.point.y - next.point.y)**2)
+        dist_1 = np.sqrt((pt1[0] - next_pt[0])**2 + (pt1[1] - next_pt[1])**2)
+        dist_2 = np.sqrt((pt2[0] - next_pt[0])**2 + (pt2[1] - next_pt[1])**2)
         if dist_1 < dist_2:
             return pt1
         return pt2
@@ -236,6 +246,25 @@ class PurePursuit(object):
         # publish the drive command
         # print("publishing drive cmd with angle = "+str(drive_angle)+" and speed = "+str(self.speed))
         self.drive_pub.publish(drive_cmd)
+
+    def get_ground_truth_pose(self):
+        '''
+        Returns the ground truth pose of the car.
+
+        Only to be used when running the car in simulation.
+        '''
+        ground_truth_pose = self.tf_buffer.lookup_transform("map", "base_link", rospy.Time())
+
+        pose = PoseStamped()
+        pose.pose.position.x = ground_truth_pose.transform.translation.x
+        pose.pose.position.y = ground_truth_pose.transform.translation.y
+        pose.pose.position.z = 0
+        pose.pose.orientation.x = 0
+        pose.pose.orientation.y = 0
+        pose.pose.orientation.z = 0
+        pose.pose.orientation.w = 1
+
+        return pose.pose
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
