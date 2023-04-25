@@ -208,9 +208,11 @@ class PathPlan:
                     came_from[neighbor] = current
                     # neighbor_count = 0
                     # if neighbor_count % 100 == 0:
+
+                    ###UNCOMMENT TO VISUALIZE VISITED NODES
                     # visited_nodes_gridcells = create_visited_node_gridcells(neighbor[0], neighbor[1], map, visited_nodes_gridcells)
                     # self.visited_nodes_pub.publish(visited_nodes_gridcells)
-
+                    ###
 
         else:
             # rospy.loginfo("No path found!")
