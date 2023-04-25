@@ -27,7 +27,7 @@ class PurePursuit(object):
         
         # these numbers can be played with
         self.lookahead        = 1.5
-        self.speed            = 2.0
+        self.speed            = 1.0
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -37,20 +37,31 @@ class PurePursuit(object):
         self.trajectory  = utils.LineTrajectory("/followed_trajectory")
         self.traj_sub = rospy.Subscriber("/trajectory/current", PoseArray, self.trajectory_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber(self.odom_topic, Odometry, self.odom_callback, queue_size=1)
-        self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
+        self.drive_pub = rospy.Publisher("/vesc/ackermann_cmd_mux/input/navigation", AckermannDriveStamped, queue_size=1)
+        #self.drive_pub = rospy.Publisher("/drive", AckermannDriveStamped, queue_size=1)
         self.car_pose = None
 
         # for visualization
         self.goal_point_pub = rospy.Publisher("/goal_point", Marker, queue_size=1)
 
         # for analytics
-        self.error_pub = rospy.Publisher("/linear_error", Float32, queue_size=1)
+        self.path_error_pub = rospy.Publisher("/path_error", Float32, queue_size=1)
+        self.delta_path_error_pub = rospy.Publisher("/delta_path_error", Float32, queue_size=1)
         self.prev_error = 0
+        
+        self.trajectory_received = False
 
     def trajectory_callback(self, msg):
         """ Clears the currently followed trajectory, and loads the new one from the message
         """
-        print "Receiving new trajectory:", len(msg.poses), "points"
+        
+
+        # print "Receiving new trajectory:", len(msg.poses), "points"
+        if self.trajectory_received:
+            return
+
+        self.trajectory_received = True
+
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz(duration=0.0)
@@ -64,14 +75,15 @@ class PurePursuit(object):
 
             self.update_traj(self.car_pose)
 
-            #print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
+            # print("car is at position (", self.car_pose.position.x, ", ", self.car_pose.position.y, "), between points ", self.cur_traj)
 
             while True:
                 try:
                     goal_point = self.find_goal(self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]])
                     if goal_point is None:
                         if self.cur_traj[1] == len(self.trajectory.points)-1:
-                            goal_point = np.array([self.trajectory.points[self.cur_traj[0]], self.trajectory.points[self.cur_traj[1]]])
+                            goal_point = np.array([self.trajectory.points[self.cur_traj[1]][0], self.trajectory.points[self.cur_traj[1]][1]])
+                            # print(goal_point)
                             break
                         else:
                             self.cur_traj = (self.cur_traj[0]+1, self.cur_traj[0]+2)
@@ -140,7 +152,9 @@ class PurePursuit(object):
             self.cur_traj = (val, val+1)
 
             # publish error here
-            self.error_pub.publish(dists[val] - self.prev_error)
+
+            self.path_error_pub.publish(dists[val])
+            self.delta_path_error_pub.publish(dists[val] - self.prev_error)
             self.prev_error = dists[val]
 
             # self.cur_traj[0] = np.argmin(dists)
@@ -150,26 +164,16 @@ class PurePursuit(object):
         """ calculates goal point given two trajectory points
         """
         Q = np.array([self.car_pose.position.x, self.car_pose.position.y])
-        #Q = np.array([5.5, 4.5])
         r = self.lookahead
         P1 = np.array([pt1[0], pt1[1]])
         V = np.array([pt2[0], pt2[1]]) - P1
-        # print('Q: ', Q)
-        # print('r: ', r)
-        # print('P1: ', P1)
-        # print('V: ', V)
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
         c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
-        # print('a: ', a)
-        # print('b: ', b)
-        # print('c: ', c)
 
         disc = b ** 2 - 4 * a * c
-        # print('disc: ', disc)
         if disc < 0:
-            # print('No Path Found')
             rospy.loginfo('No Path Found')
             raise NoGoalFoundException
 
@@ -180,22 +184,16 @@ class PurePursuit(object):
         t2 = (-b - sqrt_disc) / (2 * a)
         if t2 > 1:
             return None
-        # print(t1, t2)
 
         goal_1 = P1 + t1 * V
         goal_2 = P1 + t2 * V
-        # print(goal_1)
-        # print(goal_2)
 
         goal = self.break_tie(goal_1, goal_2, np.array([pt2[0], pt2[1]]))
-        # print(goal)
         return goal
 
     def break_tie(self, pt1, pt2, next):
         """ break tie when two points lie along the circle
         """
-        # dist_1 = np.sqrt((pt1.point.x - next.point.x)**2 + (pt1.point.y - next.point.y)**2)
-        # dist_2 = np.sqrt((pt2.point.x - next.point.x)**2 + (pt2.point.y - next.point.y)**2)
         dist_1 = np.sqrt((pt1[0] - next[0])**2 + (pt1[1] - next[1])**2)
         dist_2 = np.sqrt((pt2[0] - next[0])**2 + (pt2[1] - next[1])**2)
         if dist_1 < dist_2:
@@ -218,9 +216,10 @@ class PurePursuit(object):
         # a) current goal point is the final point in the trajectory
         # and
         # b) car is within some acceptable distance of the current goal point
-        if self.trajectory.points[-1][0] == goal_point[0] and self.trajectory.points[-1][1] == goal_point[1]:
+        if (self.car_pose.position.x - self.trajectory.points[-1][0]) ** 2 + (self.car_pose.position.y - self.trajectory.points[-1][1]) ** 2 <= 0.5:
             drive_cmd.drive.steering_angle = 0
             drive_cmd.drive.speed = 0
+            self.trajectory_received = False
 
         # otherwise, navigate to the current goal point
         else:
@@ -235,6 +234,7 @@ class PurePursuit(object):
             drive_cmd.drive.speed = self.speed
         
         # publish the drive command
+        # print("publishing drive cmd with angle = "+str(drive_angle)+" and speed = "+str(self.speed))
         self.drive_pub.publish(drive_cmd)
 
 if __name__=="__main__":

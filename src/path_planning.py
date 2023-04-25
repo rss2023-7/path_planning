@@ -23,12 +23,14 @@ class PathPlan(object):
     current car pose.
     """
     def __init__(self):
+        print("init planner")
 
         self.start = None
         self.end = None
         self.map = None
         self.resolution = None
         self.origin = None
+        self.is_planning = False
         # self.rng = np.random.default_rng()
 
         self.odom_topic = rospy.get_param("~odom_topic")
@@ -40,17 +42,11 @@ class PathPlan(object):
 
 
     def map_cb(self, msg):
-        # print(type(msg.data))
-        # print(len(msg.data))
-        new_map = ndimage.binary_dilation(np.array(msg.data).reshape(msg.info.height, msg.info.width).T, iterations=4).astype(float) * 100
+        new_map = ndimage.binary_dilation(np.array(msg.data).reshape(msg.info.height, msg.info.width).T, iterations=12).astype(float) * 100
         new_resolution = msg.info.resolution
         new_origin = self.get_origin(msg.info.origin)
         if self.map is None or self.map != new_map or self.res is None or self.resolution != new_resolution or self.origin is None or self.origin != new_origin:
-            # print(new_map.shape)
-            # print(msg.info.width, msg.info.height)
-            # print(new_origin)
-            # print(new_resolution)
-            # print("got map")
+            print("got map")
             self.map = new_map
             self.resolution = new_resolution
             self.origin = new_origin
@@ -60,7 +56,6 @@ class PathPlan(object):
     def odom_cb(self, msg):
         new_start = self.get_pose(msg.pose.pose)
         if self.start != new_start:
-            # print("got start")
             self.start = new_start
             self.try_plan_path()
 
@@ -68,7 +63,7 @@ class PathPlan(object):
     def goal_cb(self, msg):
         new_end = self.get_pose(msg.pose)
         if self.end != new_end:
-            # print("got end")
+            print("got end")
             self.end = new_end
             self.try_plan_path()
 
@@ -88,7 +83,7 @@ class PathPlan(object):
 
 
     def try_plan_path(self):
-        if self.start is not None and self.end is not None and self.map is not None:
+        if not self.is_planning and self.start is not None and self.end is not None and self.map is not None:
             self.plan_path(self.start, self.end, self.map)
 
 
@@ -137,60 +132,29 @@ class PathPlan(object):
 
     def plan_path(self, start_point, end_point, map):
         ## CODE FOR PATH PLANNING ##
-        # print("planning path")
+        print("planning path")
+        self.is_planning = True
         self.trajectory.clear()
 
-        # print(start_point)
-        # print(end_point)
-        # print(self.origin)
-        # print(self.resolution)
         start_node = Node(self.convert_to_cell(start_point))
         costs = {start_node:0}
         end_pose = (self.convert_to_cell(end_point))
-        # print(start_node.cur)
-        # print(end_pose)
 
-        # print(tuple(np.floor(start_node.cur).astype(int)))
-        # print(tuple(np.floor(end_pose).astype(int)))
-        # print(map[tuple(np.floor(start_node.cur).astype(int))])
-        # print(map[tuple(np.floor(end_pose).astype(int))])
-
-        # first_sample = True
         i = 0
         done = None
         while True:
             sample = end_pose if done is None and (i==0 or np.random.random_sample() < .05) else (np.random.random_sample() * map.shape[0], np.random.random_sample() * map.shape[1])
-            # print(sample)
-            # print(sample==end_pose)
-            # if sample == end_pose:
-            #     print(i)
-            # if (i % 1000)==0:
-            #     print(costs)
             if map[tuple(np.floor(sample).astype(int))] == 0:
                 # sampled pose is in a free node
                 nearest = min(costs.keys(), key=lambda node: self.dist(node.cur, sample))
                 dist = self.dist(nearest.cur, sample)
                 max_dist = 10.
-                # if (i%100) == 0:
-                #     print("before:",sample)
-                #     print(i)
-                #     print(sample == end_pose)
-                #     print("near:",nearest.cur)
                 if dist > max_dist:
                     scale = max_dist/dist
                     sample = (nearest.cur[0] + (sample[0]-nearest.cur[0])*scale, nearest.cur[1] + (sample[1]-nearest.cur[1])*scale)
                     dist = self.dist(nearest.cur, sample)
-                # print(dist)
-                # if (i%100) == 0:
-                #     print("after:",sample)
-                # self.trajectory.addPoint(Node(self.convert_to_point(start_node.cur)))
-                # self.trajectory.addPoint(Node(self.convert_to_point(sample)))
-                # break
                 if map[tuple(np.floor(sample).astype(int))] == 0:
-                    # print("close good")
-                    # print(nearest.cur, sample)
                     if self.path_clear(nearest.cur, sample, map):
-                        # print("path good")
                         near_nodes = filter(lambda node: self.dist(node.cur, sample) <= max_dist, costs.keys())
                         min_node = nearest
                         min_cost = costs[nearest] + dist
@@ -212,27 +176,6 @@ class PathPlan(object):
                         if sample == end_pose:
                             done = i
                             end_node = sample_node
-                            # cur_node = sample_node
-                            # path = []
-                            # while cur_node is not None:
-                            #     path.append(cur_node.cur)
-                            #     cur_node = cur_node.parent
-                            # for node in path[::-1]:
-                            #     self.trajectory.addPoint(Node(self.convert_to_point(node)))
-                            # break
-                #     else:
-                #         print("path bad")
-                # else:
-                #     print("close bad")
-            # if i % 1000 == 0:
-            #     print(len(costs))
-            # if len(costs) > 10000:
-            #     print("quitting")
-            #     for node in costs:
-            #         self.trajectory.addPoint(Node(self.convert_to_point(node.cur)))
-            #     print("quitting")
-            #     break
-            # first_sample = False
             if done is not None and i > done*1.1:
                 cur_node = end_node
                 path = []
@@ -249,6 +192,8 @@ class PathPlan(object):
 
         # visualize trajectory Markers
         self.trajectory.publish_viz()
+
+        self.is_planning = False
 
 
 if __name__=="__main__":
