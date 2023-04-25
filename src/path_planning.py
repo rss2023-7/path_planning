@@ -12,6 +12,7 @@ import tf.transformations as trans
 from visualization_msgs.msg import Marker
 from utils import LineTrajectory
 from trajectory_builder import BuildTrajectory
+from scipy import ndimage
 
 class PathPlan:
     def __init__(self):
@@ -32,6 +33,8 @@ class PathPlan:
         self.end_marker_pub = rospy.Publisher("/path_markers/end", Marker, queue_size=20)
         self.neighbor_grid_pub = rospy.Publisher("/neighbor_grid", GridCells, queue_size=10)
         self.visited_nodes_pub = rospy.Publisher("/visited_grids", GridCells, queue_size=20)
+        self.green_cells_pub = rospy.Publisher("/green_cells", GridCells, queue_size=20)
+        self.red_cells_pub = rospy.Publisher("/red_cells", GridCells, queue_size=20)
 
         self.counter = 0
 
@@ -42,12 +45,54 @@ class PathPlan:
         return (x, y, theta)
     
     def map_cb(self, map):
-        self.map_array = np.array(map.data, dtype=np.int8).reshape((map.info.height, map.info.width))
+        self.map_array = ndimage.binary_dilation(np.array(map.data, dtype=np.int8).reshape((map.info.height, map.info.width)), iterations = 10).astype(float) * 100
+    
         self.map_meta = map.info
         self.map_received = True
         self.loaded_map = map
+        # self.visualize_map_cells()
 
 
+    def visualize_map_cells(self):
+        green_cells = GridCells()
+        green_cells.header.frame_id = "map"
+        green_cells.cell_width = self.map_meta.resolution
+        green_cells.cell_height = self.map_meta.resolution
+
+        red_cells = GridCells()
+        red_cells.header.frame_id = "map"
+        red_cells.cell_width = self.map_meta.resolution
+        red_cells.cell_height = self.map_meta.resolution
+
+
+
+        for u in range(0, self.map_meta.height, 1):
+            for v in range(0, self.map_meta.width, 1):
+                occupancy = self.map_array[-u, v]
+                point = Point()
+                point.x, point.y = self.grid_to_world(u, v, self.loaded_map)
+                point.z = 0
+
+                if occupancy >= 50 and occupancy <= 100:
+                    # rospy.loginfo("Adding green, Occupancy: {}".format(occupancy))
+                    green_cells.cells.append(point)
+                elif occupancy >= 0 and occupancy <= 49:
+                    red_cells.cells.append(point)
+                    # rospy.loginfo("Adding red, Occupancy: {}".format(occupancy))
+                    red_cells.cells.append(point)
+
+        # rospy.loginfo("Red cells: {}".format(len(red_cells.cells)))
+        self.red_cells_pub.publish(red_cells)
+        # rospy.loginfo("Green cells: {}".format(len(green_cells.cells)))
+        self.green_cells_pub.publish(green_cells)
+
+        # rospy.loginfo('Map array shape: {}'.format(self.map_array.shape))
+        # #log the four corners of the map in world coordinates
+        # rospy.loginfo(" Upper left corner: {}".format(self.grid_to_world(0, 0, self.loaded_map)))        
+        # rospy.loginfo(" Upper right corner: {}".format(self.grid_to_world(0, self.map_meta.width, self.loaded_map)))
+        # rospy.loginfo(" Lower left corner: {}".format(self.grid_to_world(self.map_meta.height, 0, self.loaded_map)))
+        # rospy.loginfo(" Lower right corner: {}".format(self.grid_to_world(self.map_meta.height, self.map_meta.width, self.loaded_map)))
+        
 
 
 
@@ -65,18 +110,22 @@ class PathPlan:
             self.plan_path(self.start, self.end, self.loaded_map)
  
 
+    
     def world_to_grid(self, x, y, map):
+
         max_world_x_coord = map.info.origin.position.x
         min_world_y_coord = -(map.info.height * map.info.resolution - map.info.origin.position.y)
-        u = int(abs(y - min_world_y_coord) / map.info.resolution)
+        u = int((y - min_world_y_coord)/ map.info.resolution) ##int(abs(y - min_world_y_coord) / map.info.resolution)
         v = int(abs(x - max_world_x_coord) / map.info.resolution)
         return u, v
     
     def grid_to_world(self, u, v, map):
+   
         max_world_x_coord = map.info.origin.position.x
         min_world_y_coord = -(map.info.height * map.info.resolution - map.info.origin.position.y)
         x = max_world_x_coord - (v * map.info.resolution)
-        y = (u * map.info.resolution) + (min_world_y_coord) 
+        y = u * map.info.resolution + min_world_y_coord #-((u * map.info.resolution) + (min_world_y_coord)) 
+        reflected_y = - min_world_y_coord + (map.info.origin.position.y - y) #(y - min_world_y_coord) 
         return x, y
     
     
@@ -109,16 +158,16 @@ class PathPlan:
         visualize_marker(start_u, start_v, map, self.start_marker_pub)
         visualize_marker(end_u, end_v, map, self.end_marker_pub)
         
-        def create_visited_node_gridcells(u, v, map):
+        def create_visited_node_gridcells(u, v, map, grid_cells):
             point = self.grid_to_world(u, v, map)
-            grid_cells = GridCells()
-            grid_cells.header.frame_id = "map"
-            grid_cells.cell_width = map.info.resolution
-            grid_cells.cell_height = map.info.resolution
             grid_cells.cells.append(Point(point[0], point[1], 0))
             return grid_cells
 
 
+        visited_nodes_gridcells = GridCells()
+        visited_nodes_gridcells.header.frame_id = "map"
+        visited_nodes_gridcells.cell_width = map.info.resolution
+        visited_nodes_gridcells.cell_height = map.info.resolution
 
 
 
@@ -135,8 +184,8 @@ class PathPlan:
         def get_neighbors(u, v):
             neighbors = []
             for du, dv in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
-                if 0 <= u + du < map.info.width and 0 <= v + dv < map.info.height:
-                    if self.map_array[v + dv, u + du] < 50:
+                if 0 <= u + du < map.info.height and 0 <= v + dv < map.info.width:
+                    if self.map_array[-u + du, v + dv] < 50 and self.map_array[-u + du, v + dv] != -1:
                         neighbors.append((u + du, v + dv))
             return neighbors
 
@@ -157,8 +206,11 @@ class PathPlan:
                     priority = new_cost + euclidean_distance(neighbor, (end_u, end_v))
                     heappush(frontier, (priority, neighbor))
                     came_from[neighbor] = current
-                    visited_node_marker = create_visited_node_gridcells(neighbor[0], neighbor[1], map)
-                    self.visited_nodes_pub.publish(visited_node_marker)
+                    # neighbor_count = 0
+                    # if neighbor_count % 100 == 0:
+                    # visited_nodes_gridcells = create_visited_node_gridcells(neighbor[0], neighbor[1], map, visited_nodes_gridcells)
+                    # self.visited_nodes_pub.publish(visited_nodes_gridcells)
+
 
         else:
             # rospy.loginfo("No path found!")
