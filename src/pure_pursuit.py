@@ -114,6 +114,8 @@ class PurePursuit(object):
         '''
         path = self.trajectory.points[self.cur_traj[0]:]
         def dist_to_seg2(pt1, pt2, car):
+            """ calculates the distance from car's position to a line segment
+            """
             # p1x = pt1.pose.position.x
             # p1y = pt1.pose.position.y
             # p2x = pt2.pose.position.x
@@ -161,7 +163,7 @@ class PurePursuit(object):
         #Q = np.array([5.5, 4.5])
         r = self.lookahead
         P1 = np.array([pt1[0], pt1[1]])
-        V = np.array([pt2[0], pt2[1]]) - P1
+        V = np.array([pt2[0], pt2[1]]) - P1 # vector from P1 to P2
         # print('Q: ', Q)
         # print('r: ', r)
         # print('P1: ', P1)
@@ -169,12 +171,12 @@ class PurePursuit(object):
 
         a = V.dot(V)
         b = 2 * V.dot(P1 - Q)
-        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r ** 2
+        c = P1.dot(P1) + Q.dot(Q) - 2 * P1.dot(Q) - r**2
         # print('a: ', a)
         # print('b: ', b)
         # print('c: ', c)
 
-        disc = b ** 2 - 4 * a * c
+        disc = b**2 - 4 * a * c
         # print('disc: ', disc)
         if disc < 0:
             # print('No Path Found')
@@ -183,10 +185,10 @@ class PurePursuit(object):
 
         sqrt_disc = np.sqrt(disc)
         t1 = (-b + sqrt_disc) / (2 * a)
-        if t1 > 1:
+        if t1 > 1: # line doesn't intersect circle
             return None
         t2 = (-b - sqrt_disc) / (2 * a)
-        if t2 > 1:
+        if t2 > 1: # line doesn't intersect circle
             return None
         # print(t1, t2)
 
@@ -199,13 +201,13 @@ class PurePursuit(object):
         # print(goal)
         return goal
 
-    def break_tie(self, pt1, pt2, next):
+    def break_tie(self, pt1, pt2, next_pt):
         """ break tie when two points lie along the circle
         """
         # dist_1 = np.sqrt((pt1.point.x - next.point.x)**2 + (pt1.point.y - next.point.y)**2)
         # dist_2 = np.sqrt((pt2.point.x - next.point.x)**2 + (pt2.point.y - next.point.y)**2)
-        dist_1 = np.sqrt((pt1[0] - next[0])**2 + (pt1[1] - next[1])**2)
-        dist_2 = np.sqrt((pt2[0] - next[0])**2 + (pt2[1] - next[1])**2)
+        dist_1 = np.sqrt((pt1[0] - next_pt[0])**2 + (pt1[1] - next_pt[1])**2)
+        dist_2 = np.sqrt((pt2[0] - next_pt[0])**2 + (pt2[1] - next_pt[1])**2)
         if dist_1 < dist_2:
             return pt1
         return pt2
