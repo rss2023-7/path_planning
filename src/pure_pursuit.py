@@ -6,6 +6,7 @@ import time
 import utils
 import tf
 import tf.transformations as trans
+import tf2_ros
 
 
 from geometry_msgs.msg import PoseArray, PoseStamped
@@ -28,6 +29,10 @@ class PurePursuit(object):
         # these numbers can be played with
         self.lookahead        = 1.5
         self.speed            = 2.0
+
+        # init transform listener to get ground truth car location for sim only
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         # didn't we measure this for the safety controller?
         self.wheelbase_length = 0.8
@@ -140,8 +145,11 @@ class PurePursuit(object):
             self.cur_traj = (val, val+1)
 
             # publish error here
-            self.error_pub.publish(dists[val] - self.prev_error)
-            self.prev_error = dists[val]
+            ground_truth_pose = self.get_ground_truth_pose()
+            dists = np.array([dist_to_seg2(path[i], path[i+1], ground_truth_pose) for i in range(len(path)-1)])
+            val = np.argmin(dists)
+            self.error_pub.publish(dists[val])
+            #self.prev_error = dists[val]
 
             # self.cur_traj[0] = np.argmin(dists)
             # self.cur_traj[1] = self.cur_traj[0] + 1
@@ -236,6 +244,25 @@ class PurePursuit(object):
         
         # publish the drive command
         self.drive_pub.publish(drive_cmd)
+
+    def get_ground_truth_pose(self):
+        '''
+        Returns the ground truth pose of the car.
+
+        Only to be used when running the car in simulation.
+        '''
+        ground_truth_pose = self.tf_buffer.lookup_transform("map", "base_link", rospy.Time())
+
+        pose = PoseStamped()
+        pose.pose.position.x = ground_truth_pose.transform.translation.x
+        pose.pose.position.y = ground_truth_pose.transform.translation.y
+        pose.pose.position.z = 0
+        pose.pose.orientation.x = 0
+        pose.pose.orientation.y = 0
+        pose.pose.orientation.z = 0
+        pose.pose.orientation.w = 1
+
+        return pose.pose
 
 if __name__=="__main__":
     rospy.init_node("pure_pursuit")
