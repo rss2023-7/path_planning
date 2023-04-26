@@ -106,8 +106,8 @@ class PathPlan:
     def odom_cb(self, odom):
         self.start = self.get_pose(odom.pose.pose)
         self.counter += 1
-        if self.map_received and hasattr(self, 'end'):
-            self.plan_path(self.start, self.end, self.loaded_map)
+        # if self.map_received and hasattr(self, 'end'):
+            # self.plan_path(self.start, self.end, self.loaded_map)
  
 
     
@@ -125,7 +125,6 @@ class PathPlan:
         min_world_y_coord = -(map.info.height * map.info.resolution - map.info.origin.position.y)
         x = max_world_x_coord - (v * map.info.resolution)
         y = u * map.info.resolution + min_world_y_coord #-((u * map.info.resolution) + (min_world_y_coord)) 
-        reflected_y = - min_world_y_coord + (map.info.origin.position.y - y) #(y - min_world_y_coord) 
         return x, y
     
     
@@ -215,7 +214,7 @@ class PathPlan:
                     ###
 
         else:
-            # rospy.loginfo("No path found!")
+            rospy.loginfo("No path found!")
             return
 
         # rospy.loginfo("Path found!")
